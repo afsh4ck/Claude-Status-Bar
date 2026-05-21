@@ -1,6 +1,6 @@
 # Claude-StatusBar
 
-Statusline para [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) escrito en bash puro. Muestra modelo, contexto, tokens, rate limits y duración de sesión en una sola línea, con animaciones suaves a 1 Hz.
+Status Bar para [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) escrito en bash. Muestra modelo, contexto, tokens, rate limits y duración de sesión en una sola línea, con animaciones suaves a 1 Hz.
 
 Compatible con **Windows** (Git Bash), **macOS** y **Linux**.
 
