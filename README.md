@@ -2,11 +2,13 @@
 
 Statusline para [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) escrito en bash puro. Muestra modelo, contexto, tokens, rate limits y duración de sesión en una sola línea, con animaciones suaves a 1 Hz.
 
+Compatible con **Windows** (Git Bash), **macOS** y **Linux**.
+
 ## Características
 
 - Indicador `live` pulsante (breathing verde, 4 frames).
 - Carpeta de trabajo abreviada.
-- Modelo + nivel de effort actual (`opus 4.7 (xhigh)`, `sonnet 4.6 (high)`, etc.).
+- Modelo + nivel de effort actual (`Opus 4.7 (xhigh)`, `Sonnet 4.6 (high)`, etc.).
 - Barra de contexto multicolor verde → amarillo → rojo (10 bloques, degradado continuo) con efecto shimmer que recorre los bloques llenos.
 - Porcentaje libre de contexto con color por umbral.
 - Contador de tokens `usados / tamaño del contexto` con formato compacto (`1.2k`, `3.4M`).
@@ -22,29 +24,39 @@ Statusline para [Claude Code](https://docs.claude.com/en/docs/claude-code/overvi
 
 ## Requisitos
 
-- `bash` 4+ (en macOS usa Homebrew si necesitas una versión moderna; el script funciona en el bash 3.2 nativo, pero la concatenación de animaciones queda mejor con 4+).
-- `jq` — `brew install jq` / `apt install jq`.
-- `awk`, `date`, `basename`, `tr`, `grep` (presentes en cualquier macOS o Linux).
-- Terminal con soporte de color truecolor (24-bit). Probado en iTerm2, Terminal.app, Alacritty, Kitty, WezTerm.
+- **bash** 3.2+ — macOS incluye 3.2 nativo; en Windows usa [Git Bash](https://git-scm.com/downloads).
+- **Python 3.6+** (`python3` o `python`) — para parsear el JSON de entrada; ya viene instalado en macOS 3.x+, la mayoría de distribuciones Linux y la descarga estándar de Windows.
+- `awk`, `date`, `basename`, `tr`, `grep` — presentes en cualquier macOS, Linux o Git Bash para Windows.
+- Terminal con soporte de color truecolor (24-bit). Probado en iTerm2, Terminal.app, Alacritty, Kitty, WezTerm, Windows Terminal.
 
-## Instalación
+## Instalación rápida
 
-1. Clona o descarga este repositorio.
+```bash
+git clone https://github.com/afsh4ck/Claude-Status-Bar.git
+cd Claude-Status-Bar
+bash install.sh
+```
 
-   ```bash
-   git clone https://github.com/<tu-usuario>/Claude-StatusBar.git
-   cd Claude-StatusBar
-   ```
+El script `install.sh`:
 
-2. Copia el script a tu directorio de Claude Code y dale permisos de ejecución.
+1. Copia `custom_bar.sh` a `~/.claude/`.
+2. Detecta el sistema operativo y construye la ruta absoluta correcta (Windows necesita `C:/Users/…`, macOS/Linux usan la ruta Unix directa).
+3. Actualiza `~/.claude/settings.json` añadiendo el bloque `statusLine` sin tocar el resto de tu configuración.
+
+Reinicia Claude Code una vez finalizado.
+
+## Instalación manual
+
+1. Copia el script y dale permisos de ejecución:
 
    ```bash
    cp custom_bar.sh ~/.claude/custom_bar.sh
    chmod +x ~/.claude/custom_bar.sh
    ```
 
-3. Registra el statusline en `~/.claude/settings.json`. Si el archivo no existe, créalo con este contenido:
+2. Añade el bloque `statusLine` a `~/.claude/settings.json`:
 
+   **macOS / Linux**
    ```json
    {
      "statusLine": {
@@ -54,13 +66,23 @@ Statusline para [Claude Code](https://docs.claude.com/en/docs/claude-code/overvi
    }
    ```
 
-   Si ya tienes `settings.json`, añade únicamente el bloque `statusLine` respetando el resto. Sustituye `TU_USUARIO` por tu nombre de usuario real (Claude Code no expande `~` en este campo, hay que poner la ruta absoluta).
+   **Windows (Git Bash)**
+   ```json
+   {
+     "statusLine": {
+       "type": "command",
+       "command": "bash 'C:/Users/TU_USUARIO/.claude/custom_bar.sh'"
+     }
+   }
+   ```
 
-4. Reinicia Claude Code (`exit` y vuelve a abrir). La nueva barra aparecerá debajo del prompt.
+   > Claude Code no expande `~` en este campo; usa la ruta absoluta completa.
+
+3. Reinicia Claude Code (`exit` y vuelve a abrir).
 
 ## Configuración
 
-No hay flags ni variables de entorno: el script lee todo del JSON que pasa Claude Code por stdin. Para cambiar el aspecto edita directamente `custom_bar.sh`:
+No hay flags ni variables de entorno: el script lee todo del JSON que pasa Claude Code por stdin. Para cambiar el aspecto edita directamente `~/.claude/custom_bar.sh`:
 
 - **Anchura de la barra**: variable `width=10` en la sección "Barra multicolor". Subir a 15 o 20 da más resolución visual.
 - **Umbrales de color**: función `color_remaining`. Por defecto rojo <15%, amarillo <40%, verde el resto.

@@ -5,7 +5,7 @@
 # Entrada: JSON por stdin proporcionado por Claude Code (statusLine.type=command).
 # Salida: una línea con escapes ANSI para el statusline del terminal.
 #
-# Dependencias: bash, jq, awk, coreutils (date, basename, tr, grep).
+# Dependencias: bash, awk, coreutils (date, basename, tr), python3 (stdlib).
 
 input=$(cat)
 
@@ -14,9 +14,78 @@ anim_s=$(date +%s)
 anim_frame=$(( anim_s % 13 ))       # 0..12: recorre los 10 bloques + 2 de pausa
 pulse_frame=$(( anim_s % 4 ))       # 0..3: breathing del dot "live"
 
-# ── Campos básicos ─────────────────────────────────────────────────────────
-model_id=$(echo "$input" | jq -r '.model.id // ""')
-model_display=$(echo "$input" | jq -r '.model.display_name // ""')
+# ── Parseo JSON con Python (sin dependencia de jq) ────────────────────────
+_py=$(cat <<'PYEOF'
+import json, sys
+
+def get(d, *keys, default=''):
+    for k in keys:
+        if not isinstance(d, dict):
+            return default
+        v = d.get(k)
+        if v is None:
+            return default
+        d = v
+    return '' if d is None else str(d)
+
+def get_int(d, *keys, default='0'):
+    for k in keys:
+        if not isinstance(d, dict):
+            return default
+        v = d.get(k)
+        if v is None:
+            return default
+        d = v
+    try:
+        return str(int(d))
+    except (ValueError, TypeError):
+        return default
+
+def maybe(d, *keys):
+    """Returns '' if the key path is absent/null; otherwise the value as str."""
+    for k in keys:
+        if not isinstance(d, dict) or k not in d:
+            return ''
+        d = d[k]
+        if d is None:
+            return ''
+    return str(d)
+
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    d = {}
+
+cwd    = maybe(d, 'workspace', 'current_dir') or maybe(d, 'cwd')
+effort = maybe(d, 'effort', 'level') or maybe(d, 'output_config', 'effort')
+
+rows = [
+    ('model_id',       get(d, 'model', 'id')),
+    ('model_display',  get(d, 'model', 'display_name')),
+    ('effort',         effort),
+    ('cwd',            cwd),
+    ('ctx_used_raw',   maybe(d, 'context_window', 'used_percentage')),
+    ('ctx_rem_raw',    maybe(d, 'context_window', 'remaining_percentage')),
+    ('ctx_size',       get_int(d, 'context_window', 'context_window_size', default='200000')),
+    ('tok_in',         get_int(d, 'context_window', 'total_input_tokens',  default='0')),
+    ('tok_out',        get_int(d, 'context_window', 'total_output_tokens', default='0')),
+    ('dur_ms',         get_int(d, 'cost', 'total_duration_ms',             default='0')),
+    ('rl_5h_used_raw', maybe(d, 'rate_limits', 'five_hour', 'used_percentage')),
+    ('rl_5h_reset',    get_int(d, 'rate_limits', 'five_hour', 'resets_at',  default='0')),
+    ('rl_7d_used_raw', maybe(d, 'rate_limits', 'seven_day', 'used_percentage')),
+    ('rl_7d_reset',    get_int(d, 'rate_limits', 'seven_day', 'resets_at',  default='0')),
+]
+
+for name, val in rows:
+    safe = str(val).replace("'", "'\\''")
+    print(name + "='" + safe + "'")
+PYEOF
+)
+_python=$(command -v python3 2>/dev/null || command -v python 2>/dev/null)
+eval "$(echo "$input" | "$_python" -c "$_py")"
+[ -z "$effort" ] && effort="?"
+
+# ── Nombre del modelo formateado ────────────────────────────────────────────
 # claude-sonnet-4-7 → Sonnet 4.7 · claude-opus-4-7 → Opus 4.7 · claude-haiku-4-5 → Haiku 4.5
 if [[ "$model_id" =~ claude-(opus|sonnet|haiku)-([0-9]+)-([0-9]+) ]]; then
     fam="${BASH_REMATCH[1]}"
@@ -26,17 +95,8 @@ elif [ -n "$model_display" ]; then
 else
     model="Claude"
 fi
-# Effort: en v2.1+ el campo oficial es .effort.level; algunas builds antiguas
-# usaban .output_config.effort. Probamos ambos y dejamos "?" si no llega.
-effort=$(echo "$input" | jq -r '.effort.level // .output_config.effort // empty')
-[ -z "$effort" ] && effort="?"
-cwd=$(echo "$input"    | jq -r '.workspace.current_dir // .cwd // ""')
 
-# Contexto: distinguimos "campo ausente" (aún sin primera respuesta de API)
-# de "0% real". Si no hay datos, ctx_has_data=0 y mostramos un placeholder.
-ctx_used_raw=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
-ctx_rem_raw=$(echo "$input"  | jq -r '.context_window.remaining_percentage // empty')
-ctx_size=$(echo "$input"     | jq -r '.context_window.context_window_size // 200000')
+# ── Contexto ──────────────────────────────────────────────────────────────
 if [ -n "$ctx_used_raw" ]; then
     ctx_pct=$(LC_NUMERIC=C awk -v u="$ctx_used_raw" 'BEGIN{printf "%.0f", u}')
     ctx_has_data=1
@@ -51,18 +111,8 @@ elif [ "$ctx_has_data" = "1" ]; then
 else
     ctx_rem=""
 fi
-tok_in=$(echo "$input"  | jq -r '.context_window.total_input_tokens  // 0')
-tok_out=$(echo "$input" | jq -r '.context_window.total_output_tokens // 0')
-dur_ms=$(echo "$input"  | jq -r '.cost.total_duration_ms // 0')
 
-# Rate limits: el campo solo existe en suscripciones Pro/Max y aparece tras la
-# primera respuesta de API. En cuentas prepaid/API el objeto rate_limits no
-# llega nunca y mostraremos el placeholder "N/A (API)".
-rl_5h_used_raw=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
-rl_5h_reset=$(echo "$input"    | jq -r '.rate_limits.five_hour.resets_at // 0')
-rl_7d_used_raw=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
-rl_7d_reset=$(echo "$input"    | jq -r '.rate_limits.seven_day.resets_at // 0')
-
+# ── Rate limits ──────────────────────────────────────────────────────────────
 if [ -n "$rl_5h_used_raw" ]; then
     rl_5h_rem=$(awk -v u="$rl_5h_used_raw" 'BEGIN{r=100-u; if(r<0) r=0; if(r>100) r=100; printf "%d", r}')
 else
