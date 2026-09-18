@@ -29,7 +29,7 @@ que la acompaña siguen siendo lo libre.
 | `custom_bar.sh` | Todo el script. Fuente de verdad. |
 | `install.sh` | Copia el script a `~/.claude/` y escribe el bloque `statusLine` en `~/.claude/settings.json`. |
 | `README.md` | Documentación de usuario. |
-| `assets/preview.png` | Captura del README. |
+| `assets/*.png` | Capturas del README. |
 
 No hay build, ni tests, ni dependencias instalables.
 
@@ -157,11 +157,13 @@ Secciones en orden, marcadas con cabeceras `# ── ... ──`:
   normales de bash.
 - Tras editar, `bash install.sh` para que el cambio llegue a `~/.claude/custom_bar.sh`.
 
-## Regenerar la captura del README
+## Regenerar las capturas del README
 
-`assets/preview.png` se genera convirtiendo la salida ANSI del script a HTML y
-capturándolo con Chrome headless, no es una foto de terminal. Si cambia el formato, hay
-que rehacerla. Usa datos de ejemplo coherentes: el plan Max trabaja con contexto de 1M.
+Las capturas de `assets/` se generan convirtiendo la salida ANSI del script a HTML y
+capturándolo con Chrome headless; no son fotos de terminal. Si cambia el formato hay que
+rehacerlas todas: `preview.png` (cabecera, tres estados apilados), `preview-normal.png`,
+`preview-lleno.png` y `preview-sin-plan.png` (sección "Vista previa"). Usa datos de
+ejemplo coherentes: el plan Max trabaja con contexto de 1M.
 
 ## Convenciones del repositorio
 

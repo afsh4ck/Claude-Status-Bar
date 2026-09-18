@@ -28,24 +28,18 @@ Todos los porcentajes son **libre** (lo que queda), nunca lo consumido.
 
 ## Vista previa
 
-```
-● 📁 mi-proyecto │ Opus 5 (effort: high) │ 🧠 Contexto █░░░░░░░░░ 90% libre │ 🔢 96k de 1M tokens │ 🕒 Sesión: 4m
-🚀 Plan Max 5x │ 5️⃣  Límite 5h: 95% libre · reset en 1h 12m │ 7️⃣  Límite semanal: 98% libre · reset en 6d 10h
-```
+Uso normal, con contexto y límites holgados:
 
-Con el contexto casi lleno y los límites bajos:
+![Uso normal](assets/preview-normal.png)
 
-```
-● 📁 mi-proyecto │ Fable 5.1 (effort: max) │ 🧠 Contexto █████████░ 8% libre │ 🔢 920k de 1M tokens │ 🕒 Sesión: 2h 5m
-🚀 Plan Max 5x │ 5️⃣  Límite 5h: 12% libre · reset en 1h 15m │ 7️⃣  Límite semanal: 37% libre · reset en 3d 11h
-```
+Contexto casi lleno y límite de sesión bajo. La barra, el porcentaje y el contador de
+tokens cambian a rojo al mismo tiempo:
 
-En una cuenta sin suscripción:
+![Contexto casi lleno](assets/preview-lleno.png)
 
-```
-● 📁 mi-proyecto │ Sonnet 5 │ 🧠 Contexto ░░░░░░░░░░ sin datos aún │ 🕒 Sesión: 9s
-🚀 Sin suscripción (API key) │ Límites no disponibles en esta cuenta
-```
+Cuenta sin suscripción y sin datos de contexto todavía:
+
+![Sin suscripción](assets/preview-sin-plan.png)
 
 ## Requisitos
 
