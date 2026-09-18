@@ -13,8 +13,8 @@ Compatible con **Windows** (Git Bash), **macOS** y **Linux**.
 - Indicador `live` pulsante (breathing verde, 4 frames).
 - 📁 Carpeta de trabajo.
 - Modelo + nivel de effort actual (`Opus 5 (effort: high)`).
-- 🧠 Barra de contexto que se vacía según queda libre (10 bloques), coloreada por umbral y con shimmer recorriéndola.
-- 🔢 Tokens usados sobre el tamaño del contexto (`96k de 1M tokens`).
+- 🧠 Barra de contexto que se llena según se consume (10 bloques), con shimmer recorriéndola. El color y el porcentaje indican lo que queda **libre**.
+- 🔢 Tokens usados sobre el tamaño del contexto (`96k de 1M tokens`). El número se colorea con el mismo umbral que la barra: verde, amarillo o rojo según lo que quede libre.
 - 🕒 Duración acumulada de la sesión.
 
 **Línea 2 — cuenta**
@@ -29,14 +29,14 @@ Todos los porcentajes son **libre** (lo que queda), nunca lo consumido.
 ## Vista previa
 
 ```
-● 📁 mi-proyecto │ Opus 5 (effort: high) │ 🧠 Contexto █████████░ 90% libre │ 🔢 96k de 1M tokens │ 🕒 Sesión: 4m
+● 📁 mi-proyecto │ Opus 5 (effort: high) │ 🧠 Contexto █░░░░░░░░░ 90% libre │ 🔢 96k de 1M tokens │ 🕒 Sesión: 4m
 🚀 Plan Max 5x │ 5️⃣  Límite 5h: 95% libre · reset en 1h 12m │ 7️⃣  Límite semanal: 98% libre · reset en 6d 10h
 ```
 
 Con el contexto casi lleno y los límites bajos:
 
 ```
-● 📁 mi-proyecto │ Fable 5.1 (effort: max) │ 🧠 Contexto █░░░░░░░░░ 8% libre │ 🔢 185k de 200k tokens │ 🕒 Sesión: 2h 5m
+● 📁 mi-proyecto │ Fable 5.1 (effort: max) │ 🧠 Contexto █████████░ 8% libre │ 🔢 185k de 200k tokens │ 🕒 Sesión: 2h 5m
 🚀 Plan Max 5x │ 5️⃣  Límite 5h: 12% libre · reset en 1h 15m │ 7️⃣  Límite semanal: 37% libre · reset en 3d 11h
 ```
 
@@ -110,6 +110,7 @@ Reinicia Claude Code una vez finalizado.
 No hay flags ni variables de entorno. Para cambiar el aspecto edita directamente `~/.claude/custom_bar.sh`:
 
 - **Anchura de la barra**: variable `width=10`. Subir a 15 o 20 da más resolución visual.
+- **Colores**: `WHT` es el blanco de las etiquetas, `DIM` el gris tenue, `SEP` el separador entre segmentos.
 - **Umbrales de color**: función `color_free`. Por defecto rojo <15%, amarillo <40%, verde el resto.
 - **Orden y separadores**: las variables `l1` y `l2` al final del script componen cada línea.
 - **Animaciones**: `anim_frame` y `pulse_frame` calculan el frame en cada render con `date +%s % N`. Fíjalos a un valor constante para congelarlas.

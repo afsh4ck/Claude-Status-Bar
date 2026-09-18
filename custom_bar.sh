@@ -179,12 +179,14 @@ color_free() {
     fi
 }
 
-# ── Barra de contexto: se vacía según queda libre ──────────────────────────
+# ── Barra de contexto: se llena según se consume ───────────────────────────
+# Los bloques muestran lo USADO; el color y el porcentaje, lo que queda libre.
 width=10
 if [ -n "$ctx_rem" ]; then
-    filled=$(( (ctx_rem * width + 50) / 100 ))
+    ctx_used=$(( 100 - ctx_rem ))
+    filled=$(( (ctx_used * width + 50) / 100 ))
     [ "$filled" -gt "$width" ] && filled=$width
-    [ "$filled" -lt 1 ] && [ "$ctx_rem" -gt 0 ] && filled=1
+    [ "$filled" -lt 1 ] && [ "$ctx_used" -gt 0 ] && filled=1
     fill_color=$(color_free "$ctx_rem")
 else
     filled=0
@@ -218,11 +220,11 @@ l1+="${SEP}\033[1;35m${model}${RST}"
 [ -n "$effort" ] && l1+=" ${WHT}(effort: ${effort})${RST}"
 if [ -n "$ctx_rem" ]; then
     l1+="${SEP}🧠 Contexto ${bar} $(color_free "$ctx_rem")${ctx_rem}%${RST} ${DIM}libre${RST}"
-    l1+="${SEP}🔢 ${DIM}$(fmt_n $((tok_in + tok_out))) de $(fmt_n "$ctx_size") tokens${RST}"
+    l1+="${SEP}🔢 $(color_free "$ctx_rem")$(fmt_n $((tok_in + tok_out)))${RST}${DIM} de $(fmt_n "$ctx_size") tokens${RST}"
 else
     l1+="${SEP}🧠 Contexto ${bar} ${DIM}sin datos aún${RST}"
 fi
-l1+="${SEP}🕒 ${DIM}Sesión: ${dur_str}${RST}"
+l1+="${SEP}🕒 ${WHT}Sesión:${RST} ${DIM}${dur_str}${RST}"
 
 # ── Línea 2: cuenta y límites ──────────────────────────────────────────────
 case "$plan_family" in
