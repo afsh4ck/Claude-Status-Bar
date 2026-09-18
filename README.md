@@ -1,6 +1,6 @@
 # Claude-StatusBar
 
-<img width="2382" height="744" alt="image" src="https://github.com/user-attachments/assets/94bb7862-1417-427c-b634-cf0ff0c0b204" />
+![Claude-StatusBar](assets/preview.png)
 
 Status Bar para [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) escrito en bash. Dos líneas: la primera resume la sesión (carpeta, modelo, contexto, tokens, duración), la segunda la cuenta (plan detectado y rate limits). Animaciones suaves a 1 Hz.
 
