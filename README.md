@@ -36,7 +36,7 @@ Todos los porcentajes son **libre** (lo que queda), nunca lo consumido.
 Con el contexto casi lleno y los límites bajos:
 
 ```
-● 📁 mi-proyecto │ Fable 5.1 (effort: max) │ 🧠 Contexto █████████░ 8% libre │ 🔢 185k de 200k tokens │ 🕒 Sesión: 2h 5m
+● 📁 mi-proyecto │ Fable 5.1 (effort: max) │ 🧠 Contexto █████████░ 8% libre │ 🔢 920k de 1M tokens │ 🕒 Sesión: 2h 5m
 🚀 Plan Max 5x │ 5️⃣  Límite 5h: 12% libre · reset en 1h 15m │ 7️⃣  Límite semanal: 37% libre · reset en 3d 11h
 ```
 
