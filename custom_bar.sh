@@ -1,32 +1,26 @@
 #!/bin/bash
-# Claude-StatusBar — statusline para Claude Code con animaciones, barra de
-# contexto, contador de tokens, rate limits (Pro/Max) y duración de sesión.
+# Claude-StatusBar — statusline de 2 líneas para Claude Code.
 #
-# Entrada: JSON por stdin proporcionado por Claude Code (statusLine.type=command).
-# Salida: una línea con escapes ANSI para el statusline del terminal.
+#   Línea 1 (sesión):  carpeta · modelo · contexto · tokens · duración
+#   Línea 2 (cuenta):  plan · límite 5h · límite semanal
+#
+# Entrada: JSON por stdin (statusLine.type=command) + ~/.claude.json para el plan.
+# Salida: dos líneas con escapes ANSI.
+#
+# Todos los porcentajes mostrados son LIBRE (lo que queda), no lo consumido.
 #
 # Dependencias: bash, awk, coreutils (date, basename, tr), python3 (stdlib).
 
 input=$(cat)
 
-# ── Frame de animación (1 Hz, basado en date +%s — sin polling) ────────────
+# ── Frames de animación (1 Hz, derivados de date +%s — sin polling) ─────────
 anim_s=$(date +%s)
 anim_frame=$(( anim_s % 13 ))       # 0..12: recorre los 10 bloques + 2 de pausa
 pulse_frame=$(( anim_s % 4 ))       # 0..3: breathing del dot "live"
 
-# ── Parseo JSON con Python (sin dependencia de jq) ────────────────────────
+# ── Parseo: stdin (sesión) + ~/.claude.json (plan) en un solo proceso ───────
 _py=$(cat <<'PYEOF'
-import json, sys
-
-def get(d, *keys, default=''):
-    for k in keys:
-        if not isinstance(d, dict):
-            return default
-        v = d.get(k)
-        if v is None:
-            return default
-        d = v
-    return '' if d is None else str(d)
+import json, os, sys
 
 def get_int(d, *keys, default='0'):
     for k in keys:
@@ -42,7 +36,7 @@ def get_int(d, *keys, default='0'):
         return default
 
 def maybe(d, *keys):
-    """Returns '' if the key path is absent/null; otherwise the value as str."""
+    """'' si la ruta no existe o es null; si no, el valor como str."""
     for k in keys:
         if not isinstance(d, dict) or k not in d:
             return ''
@@ -56,16 +50,39 @@ try:
 except Exception:
     d = {}
 
-cwd    = maybe(d, 'workspace', 'current_dir') or maybe(d, 'cwd')
-effort = maybe(d, 'effort', 'level') or maybe(d, 'output_config', 'effort')
+# Plan: ~/.claude.json → oauthAccount. organizationType da la familia
+# (claude_pro/claude_max/claude_team/claude_enterprise) y
+# organizationRateLimitTier el escalón de Max (default_claude_max_5x/_20x).
+plan, plan_family = '', ''
+try:
+    with open(os.path.expanduser('~/.claude.json'), encoding='utf-8') as f:
+        acc = json.load(f).get('oauthAccount') or {}
+    org_type = acc.get('organizationType') or ''
+    tier     = acc.get('organizationRateLimitTier') or ''
+    plan_family = {
+        'claude_pro':        'pro',
+        'claude_max':        'max',
+        'claude_team':       'team',
+        'claude_enterprise': 'enterprise',
+    }.get(org_type, '')
+    plan = {
+        'pro': 'Pro', 'max': 'Max', 'team': 'Team', 'enterprise': 'Enterprise',
+    }.get(plan_family, '')
+    if plan_family == 'max':
+        plan += {'default_claude_max_5x': ' 5x',
+                 'default_claude_max_20x': ' 20x'}.get(tier, '')
+except Exception:
+    pass
 
 rows = [
-    ('model_id',       get(d, 'model', 'id')),
-    ('model_display',  get(d, 'model', 'display_name')),
-    ('effort',         effort),
-    ('cwd',            cwd),
-    ('ctx_used_raw',   maybe(d, 'context_window', 'used_percentage')),
+    ('model_id',       maybe(d, 'model', 'id')),
+    ('model_display',  maybe(d, 'model', 'display_name')),
+    ('effort',         maybe(d, 'effort', 'level')),
+    ('cwd',            maybe(d, 'workspace', 'current_dir') or maybe(d, 'cwd')),
+    ('plan',           plan),
+    ('plan_family',    plan_family),
     ('ctx_rem_raw',    maybe(d, 'context_window', 'remaining_percentage')),
+    ('ctx_used_raw',   maybe(d, 'context_window', 'used_percentage')),
     ('ctx_size',       get_int(d, 'context_window', 'context_window_size', default='200000')),
     ('tok_in',         get_int(d, 'context_window', 'total_input_tokens',  default='0')),
     ('tok_out',        get_int(d, 'context_window', 'total_output_tokens', default='0')),
@@ -77,90 +94,69 @@ rows = [
 ]
 
 for name, val in rows:
-    safe = str(val).replace("'", "'\\''")
-    print(name + "='" + safe + "'")
+    print(name + "='" + str(val).replace("'", "'\\''") + "'")
 PYEOF
 )
 _python=$(command -v python3 2>/dev/null || command -v python 2>/dev/null)
 eval "$(echo "$input" | "$_python" -c "$_py")"
-[ -z "$effort" ] && effort="?"
 
-# ── Nombre del modelo formateado ────────────────────────────────────────────
-# claude-sonnet-4-7 → Sonnet 4.7 · claude-opus-4-7 → Opus 4.7 · claude-haiku-4-5 → Haiku 4.5
-if [[ "$model_id" =~ claude-(opus|sonnet|haiku)-([0-9]+)-([0-9]+) ]]; then
-    fam="${BASH_REMATCH[1]}"
-    model="$(tr '[:lower:]' '[:upper:]' <<< ${fam:0:1})${fam:1} ${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
-elif [ -n "$model_display" ]; then
+# ── Nombre del modelo ──────────────────────────────────────────────────────
+# claude-opus-5 → Opus 5 · claude-fable-5-1 → Fable 5.1 · claude-haiku-4-5 → Haiku 4.5
+if [ -n "$model_display" ]; then
     model="$model_display"
+elif [[ "$model_id" =~ claude-([a-z]+)-([0-9]+)(-([0-9]+))? ]]; then
+    fam="${BASH_REMATCH[1]}"
+    model="$(tr '[:lower:]' '[:upper:]' <<< ${fam:0:1})${fam:1} ${BASH_REMATCH[2]}"
+    [ -n "${BASH_REMATCH[4]}" ] && model="${model}.${BASH_REMATCH[4]}"
 else
     model="Claude"
 fi
 
-# ── Contexto ──────────────────────────────────────────────────────────────
-if [ -n "$ctx_used_raw" ]; then
-    ctx_pct=$(LC_NUMERIC=C awk -v u="$ctx_used_raw" 'BEGIN{printf "%.0f", u}')
-    ctx_has_data=1
-else
-    ctx_pct=0
-    ctx_has_data=0
-fi
+# ── Contexto libre ─────────────────────────────────────────────────────────
 if [ -n "$ctx_rem_raw" ]; then
     ctx_rem=$(LC_NUMERIC=C awk -v r="$ctx_rem_raw" 'BEGIN{printf "%.0f", r}')
-elif [ "$ctx_has_data" = "1" ]; then
-    ctx_rem=$(( 100 - ctx_pct ))
+elif [ -n "$ctx_used_raw" ]; then
+    ctx_rem=$(LC_NUMERIC=C awk -v u="$ctx_used_raw" 'BEGIN{printf "%.0f", 100-u}')
 else
     ctx_rem=""
 fi
 
-# ── Rate limits ──────────────────────────────────────────────────────────────
-if [ -n "$rl_5h_used_raw" ]; then
-    rl_5h_rem=$(awk -v u="$rl_5h_used_raw" 'BEGIN{r=100-u; if(r<0) r=0; if(r>100) r=100; printf "%d", r}')
-else
-    rl_5h_rem=""
-fi
-if [ -n "$rl_7d_used_raw" ]; then
-    rl_7d_rem=$(awk -v u="$rl_7d_used_raw" 'BEGIN{r=100-u; if(r<0) r=0; if(r>100) r=100; printf "%d", r}')
-else
-    rl_7d_rem=""
-fi
+# ── Rate limits: usado → libre ─────────────────────────────────────────────
+pct_free() {
+    [ -z "$1" ] && return
+    awk -v u="$1" 'BEGIN{r=100-u; if(r<0) r=0; if(r>100) r=100; printf "%d", r}'
+}
+rl_5h_rem=$(pct_free "$rl_5h_used_raw")
+rl_7d_rem=$(pct_free "$rl_7d_used_raw")
 
-# ── Carpeta abreviada ──────────────────────────────────────────────────────
-folder="${cwd/#$HOME/~}"
-folder=$(basename "$folder")
+# ── Carpeta ────────────────────────────────────────────────────────────────
+folder=$(basename "${cwd:-$PWD}")
 [ -z "$folder" ] && folder="~"
 
-# ── Formato de tokens (1.2k / 3.4M) ────────────────────────────────────────
+# ── Formatos ───────────────────────────────────────────────────────────────
 fmt_n() {
     local n=$1
-    if   [ "$n" -lt 1000 ];     then echo "$n"
-    elif [ "$n" -lt 1000000 ];  then LC_NUMERIC=C awk "BEGIN{printf \"%.1fk\", $n/1000}"
-    else                              LC_NUMERIC=C awk "BEGIN{printf \"%.1fM\", $n/1000000}"
+    if   [ "$n" -lt 1000 ];    then echo "$n"
+    elif [ "$n" -lt 1000000 ]; then LC_NUMERIC=C awk "BEGIN{printf \"%.0fk\", $n/1000}"
+    else                            LC_NUMERIC=C awk "BEGIN{v=$n/1000000; printf (v==int(v) ? \"%.0fM\" : \"%.1fM\"), v}"
     fi
 }
-tokens_total=$((tok_in + tok_out))
-tok_fmt=$(fmt_n "$tokens_total")
-ctx_max_fmt=$(fmt_n "$ctx_size")
 
-# ── Duración de sesión ─────────────────────────────────────────────────────
-secs=$((dur_ms / 1000))
+secs=$(( dur_ms / 1000 ))
 if   [ "$secs" -lt 60 ];   then dur_str="${secs}s"
 elif [ "$secs" -lt 3600 ]; then dur_str="$((secs/60))m"
-else                            dur_str="$((secs/3600))h$((secs%3600/60))m"
+else                            dur_str="$((secs/3600))h $((secs%3600/60))m"
 fi
 
-# ── Tiempo hasta reset (formato "2h" / "3d 5h") ────────────────────────────
-# "—" = sin ventana abierta (API no envía resets_at aún)
-# "ya" = reset vencido
+# Tiempo hasta el reset: "45m" / "2h 10m" / "6d 3h".
 fmt_reset() {
-    local target=$1
-    local now=$(date +%s)
-    if [ "$target" -le 0 ]; then echo "—"; return; fi
-    local diff=$((target - now))
-    if [ "$diff" -le 0 ]; then echo "ya"; return; fi
+    local diff=$(( $1 - $(date +%s) ))
     local d=$(( diff / 86400 ))
     local h=$(( (diff % 86400) / 3600 ))
     local m=$(( (diff % 3600) / 60 ))
-    if   [ "$d" -gt 0 ] && [ "$h" -gt 0 ]; then echo "${d}d ${h}h"
+    if   [ "$1" -le 0 ];                   then echo "sin ventana abierta"
+    elif [ "$diff" -le 0 ];                then echo "ya disponible"
+    elif [ "$d" -gt 0 ] && [ "$h" -gt 0 ]; then echo "${d}d ${h}h"
     elif [ "$d" -gt 0 ];                   then echo "${d}d"
     elif [ "$h" -gt 0 ] && [ "$m" -gt 0 ]; then echo "${h}h ${m}m"
     elif [ "$h" -gt 0 ];                   then echo "${h}h"
@@ -169,92 +165,97 @@ fmt_reset() {
     fi
 }
 
-# ── Barra multicolor verde→amarillo→rojo (10 bloques, degradado continuo) ──
-width=10
-filled=$(( (ctx_pct * width + 50) / 100 ))
-[ "$filled" -gt "$width" ] && filled=$width
-bar=""
-for ((i=0; i<width; i++)); do
-    pos=$(( (2*i + 1) * 5 ))           # centro del bloque en %: 5, 15, 25… 95
-    if [ "$pos" -le 50 ]; then
-        r=$(( pos * 255 / 50 )); g=255
-    else
-        r=255; g=$(( (100 - pos) * 255 / 50 ))
-    fi
-    if [ "$i" -lt "$filled" ]; then
-        # Shimmer: el bloque en la posición de la animación gana brillo
-        if [ "$i" -eq "$anim_frame" ]; then
-            br=$(( (r + 255) / 2 ))
-            bg=$(( (g + 255) / 2 ))
-            bar+="\033[1m\033[38;2;${br};${bg};200m█\033[22m"
-        else
-            bar+="\033[38;2;${r};${g};0m█"
-        fi
-    else
-        # Traza tenue del shimmer al pasar por bloques vacíos
-        if [ "$i" -eq "$anim_frame" ]; then
-            bar+="\033[38;2;110;110;110m█"
-        else
-            bar+="\033[38;2;60;60;60m█"
-        fi
-    fi
-done
-bar+="\033[0m"
-
-# ── Dot "live" pulsante (breathing verde, 4 frames) ────────────────────────
-case "$pulse_frame" in
-    0) live_dot="\033[38;2;40;170;80m●\033[0m" ;;
-    1) live_dot="\033[38;2;80;215;120m●\033[0m" ;;
-    2) live_dot="\033[1m\033[38;2;140;255;180m●\033[22m\033[0m" ;;
-    3) live_dot="\033[38;2;80;215;120m●\033[0m" ;;
-esac
-
-# ── Color por % restante (bajo=rojo, medio=amarillo, alto=verde) ───────────
-color_remaining() {
-    local p=$1
-    if   [ "$p" -lt 15 ]; then echo "\033[1;31m"
-    elif [ "$p" -lt 40 ]; then echo "\033[1;33m"
-    else                        echo "\033[1;32m"
-    fi
-}
+# ── Colores ────────────────────────────────────────────────────────────────
 RST="\033[0m"
 DIM="\033[2;37m"
+WHT="\033[0;37m"
+SEP="${DIM} │ ${RST}"
+
+# Color según % LIBRE: poco = rojo, medio = amarillo, mucho = verde.
+color_free() {
+    if   [ "$1" -lt 15 ]; then echo "\033[1;31m"
+    elif [ "$1" -lt 40 ]; then echo "\033[1;33m"
+    else                       echo "\033[1;32m"
+    fi
+}
+
+# ── Barra de contexto: se vacía según queda libre ──────────────────────────
+width=10
+if [ -n "$ctx_rem" ]; then
+    filled=$(( (ctx_rem * width + 50) / 100 ))
+    [ "$filled" -gt "$width" ] && filled=$width
+    [ "$filled" -lt 1 ] && [ "$ctx_rem" -gt 0 ] && filled=1
+    fill_color=$(color_free "$ctx_rem")
+else
+    filled=0
+    fill_color="$DIM"
+fi
+bar=""
+for ((i=0; i<width; i++)); do
+    if [ "$i" -lt "$filled" ]; then
+        if [ "$i" -eq "$anim_frame" ]; then
+            bar+="\033[1m${fill_color}█${RST}"      # shimmer
+        else
+            bar+="${fill_color}█${RST}"
+        fi
+    elif [ "$i" -eq "$anim_frame" ]; then
+        bar+="\033[38;2;110;110;110m░${RST}"
+    else
+        bar+="\033[38;2;60;60;60m░${RST}"
+    fi
+done
+
+# ── Dot "live" pulsante ────────────────────────────────────────────────────
+case "$pulse_frame" in
+    0) live="\033[38;2;40;170;80m●${RST}" ;;
+    2) live="\033[1m\033[38;2;140;255;180m●${RST}" ;;
+    *) live="\033[38;2;80;215;120m●${RST}" ;;
+esac
+
+# ── Línea 1: sesión ────────────────────────────────────────────────────────
+l1="${live} 📁 \033[1;36m${folder}${RST}"
+l1+="${SEP}\033[1;35m${model}${RST}"
+[ -n "$effort" ] && l1+=" ${WHT}(effort: ${effort})${RST}"
+if [ -n "$ctx_rem" ]; then
+    l1+="${SEP}🧠 Contexto ${bar} $(color_free "$ctx_rem")${ctx_rem}%${RST} ${DIM}libre${RST}"
+    l1+="${SEP}🔢 ${DIM}$(fmt_n $((tok_in + tok_out))) de $(fmt_n "$ctx_size") tokens${RST}"
+else
+    l1+="${SEP}🧠 Contexto ${bar} ${DIM}sin datos aún${RST}"
+fi
+l1+="${SEP}🕒 ${DIM}Sesión: ${dur_str}${RST}"
+
+# ── Línea 2: cuenta y límites ──────────────────────────────────────────────
+case "$plan_family" in
+    max)  plan_color="\033[1;35m" ;;
+    pro)  plan_color="\033[1;34m" ;;
+    "")   plan_color="$DIM" ;;
+    *)    plan_color="\033[1;36m" ;;
+esac
+if [ -n "$plan" ]; then
+    l2="🚀 ${DIM}Plan${RST} ${plan_color}${plan}${RST}"
+else
+    l2="🚀 ${DIM}Sin suscripción (API key)${RST}"
+fi
 
 if [ -n "$rl_5h_rem" ]; then
-    rl_5h_seg="$(color_remaining "$rl_5h_rem")${rl_5h_rem}%${RST} libre (reset en $(fmt_reset "$rl_5h_reset"))"
-else
-    rl_5h_seg="${DIM}N/A (API)${RST}"
+    l2+="${SEP}5️⃣  ${WHT}Límite 5h:${RST} $(color_free "$rl_5h_rem")${rl_5h_rem}%${RST} ${DIM}libre · reset en $(fmt_reset "$rl_5h_reset")${RST}"
 fi
 if [ -n "$rl_7d_rem" ]; then
-    rl_7d_seg="$(color_remaining "$rl_7d_rem")${rl_7d_rem}%${RST} libre (reset en $(fmt_reset "$rl_7d_reset"))"
-else
-    rl_7d_seg="${DIM}N/A (API)${RST}"
+    l2+="${SEP}7️⃣  ${WHT}Límite semanal:${RST} $(color_free "$rl_7d_rem")${rl_7d_rem}%${RST} ${DIM}libre · reset en $(fmt_reset "$rl_7d_reset")${RST}"
+fi
+if [ -z "$rl_5h_rem$rl_7d_rem" ]; then
+    l2+="${SEP}${DIM}Límites no disponibles en esta cuenta${RST}"
 fi
 
 # ── Sentinel (opcional) ────────────────────────────────────────────────────
-# Solo se muestra si se detectan los archivos del skill mcp-sentinel. Si no
-# están instalados, se omite el segmento entero.
+# Solo aparece si están los archivos del skill mcp-sentinel.
 SENTINEL_SCRIPT="$HOME/.claude/skills/mcp-sentinel/hooks/sentinel_preflight.py"
-SETTINGS_FILE="$HOME/.claude/settings.json"
-sntl_seg=""
 if [ -e "$SENTINEL_SCRIPT" ]; then
-    if [ -x "$SENTINEL_SCRIPT" ] && grep -q "sentinel_preflight" "$SETTINGS_FILE" 2>/dev/null; then
-        sntl_seg=" │ 🛡 \033[1;32mSNTL:ON\033[0m"
+    if [ -x "$SENTINEL_SCRIPT" ] && grep -q "sentinel_preflight" "$HOME/.claude/settings.json" 2>/dev/null; then
+        l2+="${SEP}🛡 \033[1;32mSentinel ON${RST}"
     else
-        sntl_seg=" │ 🛡 \033[1;31mSNTL:OFF\033[0m"
+        l2+="${SEP}🛡 \033[1;31mSentinel OFF${RST}"
     fi
 fi
 
-# ── Salida ─────────────────────────────────────────────────────────────────
-# Segmento de contexto: bar (visualiza % USADO) + porcentaje LIBRE en texto.
-# Cuando aún no hay datos (antes de la primera respuesta de API), avisamos.
-if [ "$ctx_has_data" = "1" ]; then
-    ctx_color=$(color_remaining "$ctx_rem")
-    ctx_seg="$bar ${ctx_color}${ctx_rem}%${RST} libre"
-    tok_seg="${tok_fmt} / ${ctx_max_fmt}"
-else
-    ctx_seg="$bar ${DIM}sin datos${RST}"
-    tok_seg="${DIM}sin datos${RST}"
-fi
-
-echo -e "$live_dot 📁 $folder │ 🤖 $model ($effort) │ $ctx_seg │ 🔢 ${tok_seg} │ ⏱ ${dur_str} │ 📊 5h: ${rl_5h_seg} · Semana: ${rl_7d_seg}${sntl_seg}"
+echo -e "$l1\n$l2"

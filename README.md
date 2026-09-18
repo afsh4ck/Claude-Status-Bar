@@ -2,26 +2,49 @@
 
 <img width="2382" height="744" alt="image" src="https://github.com/user-attachments/assets/94bb7862-1417-427c-b634-cf0ff0c0b204" />
 
-Status Bar para [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) escrito en bash. Muestra modelo, contexto, tokens, rate limits y duración de sesión en una sola línea, con animaciones suaves a 1 Hz.
+Status Bar para [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) escrito en bash. Dos líneas: la primera resume la sesión (carpeta, modelo, contexto, tokens, duración), la segunda la cuenta (plan detectado y rate limits). Animaciones suaves a 1 Hz.
 
 Compatible con **Windows** (Git Bash), **macOS** y **Linux**.
 
 ## Características
 
+**Línea 1 — sesión**
+
 - Indicador `live` pulsante (breathing verde, 4 frames).
-- Carpeta de trabajo abreviada.
-- Modelo + nivel de effort actual (`Opus 4.7 (xhigh)`, `Sonnet 4.6 (high)`, etc.).
-- Barra de contexto multicolor verde → amarillo → rojo (10 bloques, degradado continuo) con efecto shimmer que recorre los bloques llenos.
-- Porcentaje libre de contexto con color por umbral.
-- Contador de tokens `usados / tamaño del contexto` con formato compacto (`1.2k`, `3.4M`).
-- Duración acumulada de la sesión.
-- Rate limits 5h y 7d (solo en cuentas Claude Pro/Max). En cuentas API/prepaid muestra `N/A (API)` porque ese campo no existe.
-- Segmento opcional `SNTL:ON/OFF` para el skill [mcp-sentinel](https://github.com/anthropics/claude-code) — solo aparece si los archivos del sentinel están instalados.
+- 📁 Carpeta de trabajo.
+- Modelo + nivel de effort actual (`Opus 5 (effort: high)`).
+- 🧠 Barra de contexto que se vacía según queda libre (10 bloques), coloreada por umbral y con shimmer recorriéndola.
+- 🔢 Tokens usados sobre el tamaño del contexto (`96k de 1M tokens`).
+- 🕒 Duración acumulada de la sesión.
+
+**Línea 2 — cuenta**
+
+- 🚀 Plan detectado automáticamente: `Pro`, `Max 5x`, `Max 20x`, `Team`, `Enterprise`. Sin suscripción muestra `Sin suscripción (API key)`.
+- 5️⃣ Límite de sesión de 5 horas: porcentaje libre y tiempo hasta el reset.
+- 7️⃣ Límite semanal: porcentaje libre y tiempo hasta el reset.
+- 🛡 Estado del skill mcp-sentinel — solo aparece si sus archivos están instalados.
+
+Todos los porcentajes son **libre** (lo que queda), nunca lo consumido.
 
 ## Vista previa
 
 ```
-● 📁 mi-proyecto │ 🤖 Opus 4.7 (xhigh) │ ██████░░░░ 42% libre │ 🔢 24.5k / 1.0M │ ⏱ 12m │ 📊 5h: 87% libre (reset en 3h 12m) · Semana: 64% libre (reset en 4d 2h)
+● 📁 mi-proyecto │ Opus 5 (effort: high) │ 🧠 Contexto █████████░ 90% libre │ 🔢 96k de 1M tokens │ 🕒 Sesión: 4m
+🚀 Plan Max 5x │ 5️⃣  Límite 5h: 95% libre · reset en 1h 12m │ 7️⃣  Límite semanal: 98% libre · reset en 6d 10h
+```
+
+Con el contexto casi lleno y los límites bajos:
+
+```
+● 📁 mi-proyecto │ Fable 5.1 (effort: max) │ 🧠 Contexto █░░░░░░░░░ 8% libre │ 🔢 185k de 200k tokens │ 🕒 Sesión: 2h 5m
+🚀 Plan Max 5x │ 5️⃣  Límite 5h: 12% libre · reset en 1h 15m │ 7️⃣  Límite semanal: 37% libre · reset en 3d 11h
+```
+
+En una cuenta sin suscripción:
+
+```
+● 📁 mi-proyecto │ Sonnet 5 │ 🧠 Contexto ░░░░░░░░░░ sin datos aún │ 🕒 Sesión: 9s
+🚀 Sin suscripción (API key) │ Límites no disponibles en esta cuenta
 ```
 
 ## Requisitos
@@ -84,22 +107,40 @@ Reinicia Claude Code una vez finalizado.
 
 ## Configuración
 
-No hay flags ni variables de entorno: el script lee todo del JSON que pasa Claude Code por stdin. Para cambiar el aspecto edita directamente `~/.claude/custom_bar.sh`:
+No hay flags ni variables de entorno. Para cambiar el aspecto edita directamente `~/.claude/custom_bar.sh`:
 
-- **Anchura de la barra**: variable `width=10` en la sección "Barra multicolor". Subir a 15 o 20 da más resolución visual.
-- **Umbrales de color**: función `color_remaining`. Por defecto rojo <15%, amarillo <40%, verde el resto.
-- **Iconos / separadores**: la línea final `echo -e ...` controla el orden y los emojis (📁 🤖 🔢 ⏱ 📊 🛡).
-- **Animaciones**: las variables `anim_frame` y `pulse_frame` calculan el frame en cada render usando `date +%s % N`. Si quieres congelar las animaciones, fija ambos a un valor fijo.
+- **Anchura de la barra**: variable `width=10`. Subir a 15 o 20 da más resolución visual.
+- **Umbrales de color**: función `color_free`. Por defecto rojo <15%, amarillo <40%, verde el resto.
+- **Orden y separadores**: las variables `l1` y `l2` al final del script componen cada línea.
+- **Animaciones**: `anim_frame` y `pulse_frame` calculan el frame en cada render con `date +%s % N`. Fíjalos a un valor constante para congelarlas.
 
-## Rate limits 5h / Semana
+## Detección del plan
 
-Los segmentos `5h` y `Semana` solo se rellenan cuando Claude Code incluye el objeto `rate_limits.five_hour` y `rate_limits.seven_day` en el stdin del statusline. Esto sucede únicamente en cuentas con suscripción **Claude Pro** o **Claude Max**.
+El JSON del statusline **no** incluye el tipo de suscripción, así que el script lo lee de `~/.claude.json` → `oauthAccount`:
 
-En cuentas **API/prepaid** (incluyendo Claude Teams con facturación prepago) Claude Code no envía esos campos, así que la barra muestra `N/A (API)` en gris tenue. No es un error: es lo correcto, esas ventanas de rate limit son una característica exclusiva de las suscripciones.
+| Campo | Valor | Se muestra |
+|---|---|---|
+| `organizationType` | `claude_pro` | `Pro` |
+| `organizationType` | `claude_max` + `organizationRateLimitTier` `default_claude_max_5x` | `Max 5x` |
+| `organizationType` | `claude_max` + `organizationRateLimitTier` `default_claude_max_20x` | `Max 20x` |
+| `organizationType` | `claude_team` | `Team` |
+| `organizationType` | `claude_enterprise` | `Enterprise` |
+
+Si el bloque no existe (sesión con API key, Bedrock o Vertex) se muestra `Sin plan` en gris.
+
+## Rate limits 5h / 7d
+
+Los segmentos `5h` y `7d` solo se rellenan cuando Claude Code incluye `rate_limits.five_hour` y `rate_limits.seven_day` en el stdin. Eso ocurre únicamente en cuentas con suscripción. En cuentas API/prepaid la línea 2 muestra `Límites no disponibles en esta cuenta`.
+
+### Por qué no se muestra el consumo de Fable 5.1
+
+Claude Code sí mantiene ventanas de rate limit por modelo (`seven_day_opus`, `seven_day_overage_included`, `model_scoped[]`), pero **no las pasa al statusline**: el objeto `rate_limits` del stdin solo contiene `five_hour`, `seven_day` y, en modo gateway, `spend_limit`.
+
+Obtener el desglose por modelo exigiría llamar a `GET /api/oauth/usage` con el token OAuth del Keychain en cada render. Este script no lo hace a propósito: cero red, cero credenciales, cero latencia. Para ver el desglose por modelo usa el comando `/usage` dentro de Claude Code.
 
 ## Cómo lo verifica Claude Code
 
-Claude Code llama al `command` configurado en `statusLine` cada ~1 segundo mientras la sesión está activa, le envía un JSON por stdin y muestra la primera línea de stdout como statusline. El script no tiene estado entre renders: cada llamada parsea de nuevo el JSON. Esto permite refrescar las animaciones sin polling adicional.
+Claude Code llama al `command` configurado en `statusLine` cada ~1 segundo mientras la sesión está activa, le envía un JSON por stdin y muestra su stdout como statusline (admite varias líneas). El script no tiene estado entre renders: cada llamada parsea de nuevo el JSON. Esto permite refrescar las animaciones sin polling adicional.
 
 Para inspeccionar el JSON que llega al script puedes añadir temporalmente al principio:
 
